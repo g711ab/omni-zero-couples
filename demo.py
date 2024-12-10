@@ -19,7 +19,7 @@ def demo():
         number_of_images=1,
         number_of_steps=10,
         base_image=base_image,
-        base_image_strength=0.3,
+        base_image_strength=0.1,
         style_image=style_image,
         style_image_strength=1.0,
         identity_image_1=identity_image_1,
