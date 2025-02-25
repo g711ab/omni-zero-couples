@@ -90,6 +90,7 @@ def generate(
     style_image="https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
     identity_image_1="https://cdn-prod.styleof.com/inferences/cm1hp4lea14oz14jeoghnex7g/dlgc5xwo0qzey7qaixy45i1o-medium.jpeg",
     identity_image_2="https://cdn-prod.styleof.com/inferences/cm1ho69ha14np14jesnusqiep/mp3aaktzqz20ujco5i3bi5s1-medium.jpeg",
+    identity_image_3="https://cdn-prod.styleof.com/inferences/cm1ho69ha14np14jesnusqiep/mp3aaktzqz20ujco5i3bi5s1-medium.jpeg",
     seed=42,
     prompt="Cinematic still photo of a couple. emotional, harmonious, vignette, 4k epic detailed, shot on kodak, 35mm photo, sharp focus, high budget, cinemascope, moody, epic, gorgeous, film grain, grainy",
     negative_prompt="anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured",
@@ -100,6 +101,7 @@ def generate(
     style_image_strength=1.0,
     identity_image_strength_1=1.0,
     identity_image_strength_2=1.0,
+    identity_image_strength_3=1.0,
     depth_image=None,
     depth_image_strength=0.2,
     mask_guidance_start=0.0,
@@ -133,7 +135,11 @@ def generate(
         identity_image_2 = load_and_resize_image(identity_image_2, resolution, resolution)
     else:
         raise ValueError("You must provide an identity image 2")
-
+    
+    if identity_image_3 is not None:
+        identity_image_3 = load_and_resize_image(identity_image_3, resolution, resolution)
+    else:
+        raise ValueError("You must provide an identity image 3")
     height, width = base_image.size
 
     face_info_1 = face_analysis.get(cv2.cvtColor(np.array(identity_image_1), cv2.COLOR_RGB2BGR))
@@ -148,6 +154,12 @@ def generate(
     face_info_2 = sorted(face_info_2, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])[-1] # only use the maximum face
     face_emb_2 = torch.tensor(face_info_2['embedding']).to("cuda", dtype=dtype)
 
+    face_info_3 = face_analysis.get(cv2.cvtColor(np.array(identity_image_3), cv2.COLOR_RGB2BGR))
+    for i, face in enumerate(face_info_3):
+        print(f"Face 3 -{i}: Age: {face['age']}, Gender: {face['gender']}")
+    face_info_3 = sorted(face_info_3, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])[-1] # only use the maximum face
+    face_emb_3 = torch.tensor(face_info_3['embedding']).to("cuda", dtype=dtype)
+
     zero = np.zeros((width, height, 3), dtype=np.uint8)
     # face_kps_identity_image_1 = draw_kps(zero, face_info_1['kps'])
     # face_kps_identity_image_2 = draw_kps(zero, face_info_2['kps'])
@@ -156,10 +168,14 @@ def generate(
     faces_info_img2img = sorted(face_info_img2img, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])
     face_info_a = faces_info_img2img[-1]
     face_info_b = faces_info_img2img[-2]
+    face_info_c = faces_info_img2img[-3]
+
     # face_emb_a = torch.tensor(face_info_a['embedding']).to("cuda", dtype=dtype)
     # face_emb_b = torch.tensor(face_info_b['embedding']).to("cuda", dtype=dtype)
     face_kps_identity_image_a = draw_kps(zero, face_info_a['kps'])
     face_kps_identity_image_b = draw_kps(zero, face_info_b['kps'])
+    face_kps_identity_image_c = draw_kps(zero, face_info_c['kps'])
+
 
     general_mask = PIL.Image.fromarray(np.ones((width, height, 3), dtype=np.uint8))
 
@@ -175,13 +191,19 @@ def generate(
     control_mask_2[y1:y2, x1:x2] = 255
     control_mask_2 = PIL.Image.fromarray(control_mask_2.astype(np.uint8))
 
-    controlnet_masks = [control_mask_1, control_mask_2, general_mask]
-    ip_adapter_images = [face_emb_1, face_emb_2, style_image, ]
+    control_mask_3 = zero.copy()
+    x1, y1, x2, y2 = face_info_c["bbox"]
+    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+    control_mask_3[y1:y2, x1:x2] = 255
+    control_mask_3 = PIL.Image.fromarray(control_mask_3.astype(np.uint8))
 
-    masks = ip_adapter_mask_processor.preprocess([control_mask_1, control_mask_2, general_mask], height=height, width=width)
+    controlnet_masks = [control_mask_1, control_mask_2, control_mask_3, general_mask]
+    ip_adapter_images = [face_emb_1, face_emb_2, face_emb_3, style_image, ]
+
+    masks = ip_adapter_mask_processor.preprocess([control_mask_1, control_mask_2, control_mask_3, general_mask], height=height, width=width)
     ip_adapter_masks = [mask.unsqueeze(0) for mask in masks]
 
-    inpaint_mask = torch.logical_or(torch.tensor(np.array(control_mask_1)), torch.tensor(np.array(control_mask_2))).float()
+    inpaint_mask = torch.logical_or(torch.tensor(np.array(control_mask_1)), torch.tensor(np.array(control_mask_2)), torch.tensor(np.array(control_mask_3))).float()
     inpaint_mask = PIL.Image.fromarray((inpaint_mask.numpy() * 255).astype(np.uint8)).convert("RGB")
 
     new_ip_adapter_masks = []
@@ -194,7 +216,7 @@ def generate(
         
     generator = torch.Generator(device="cpu").manual_seed(seed)
 
-    pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,
+    pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,identity_image_strength_3,
         {
             "down": { "block_2": [0.0, 0.0] }, #Composition
             "up": { "block_0": [0.0, style_image_strength, 0.0] } #Style
@@ -213,10 +235,10 @@ def generate(
         mask_image=inpaint_mask,
         i2i_mask_guidance_start=mask_guidance_start,
         i2i_mask_guidance_end=mask_guidance_end,
-        control_image=[face_kps_identity_image_a, face_kps_identity_image_b, depth_image],
+        control_image=[face_kps_identity_image_a, face_kps_identity_image_b, face_kps_identity_image_c, depth_image],
         control_mask=controlnet_masks,
         identity_control_indices=[(0,0), (1,1)],
-        controlnet_conditioning_scale=[identity_image_strength_1, identity_image_strength_2, depth_image_strength],
+        controlnet_conditioning_scale=[identity_image_strength_1, identity_image_strength_2,identity_image_strength_3, depth_image_strength],
         strength=1-base_image_strength,
         generator=generator,
         seed=seed,
@@ -241,21 +263,26 @@ with gr.Blocks() as demo:
             with gr.Row():
                 negative_prompt = gr.Textbox(label="Negative Prompt", value="anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured")
             with gr.Row():
-                with gr.Column(min_width=140):
+                with gr.Column(min_width=105):
                     with gr.Row():
                         base_image = gr.Image(label="Base Image")
                     with gr.Row():
                         base_image_strength = gr.Slider(label="Strength",step=0.01, minimum=0.0, maximum=1.0, value=1.0)
-                with gr.Column(min_width=140):
+                with gr.Column(min_width=105):
                     with gr.Row():
                         identity_image = gr.Image(label="Identity Image")
                     with gr.Row():
                         identity_image_strength = gr.Slider(label="Strength",step=0.01, minimum=0.0, maximum=1.0, value=1.0)
-                with gr.Column(min_width=140):
+                with gr.Column(min_width=105):
                     with gr.Row():
                         identity_image_2 = gr.Image(label="Identity Image 2")
                     with gr.Row():
                         identity_image_strength_2 = gr.Slider(label="Strength",step=0.01, minimum=0.0, maximum=1.0, value=1.0)
+                with gr.Column(min_width=105):
+                    with gr.Row():
+                        identity_image_3 = gr.Image(label="Identity Image 3")
+                    with gr.Row():
+                        identity_image_strength_3 = gr.Slider(label="Strength",step=0.01, minimum=0.0, maximum=1.0, value=1.0)
             with gr.Accordion("Advanced options", open=False):    
                 with gr.Row():
                     with gr.Column():
@@ -286,6 +313,7 @@ with gr.Blocks() as demo:
                     style_image if style_image is not None else bas,
                     identity_image,
                     identity_image_2,
+                    identity_image_3,
                     seed,
                     prompt,
                     negative_prompt,
@@ -296,6 +324,7 @@ with gr.Blocks() as demo:
                     style_image_strength,
                     identity_image_strength,
                     identity_image_strength_2,
+                    identity_image_strength_3,
                     depth_image,
                     depth_image_strength,
                     mask_guidance_start,
@@ -310,15 +339,16 @@ with gr.Blocks() as demo:
                 "https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
                 "https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
                 "https://cdn-prod.styleof.com/inferences/cm1hp4lea14oz14jeoghnex7g/dlgc5xwo0qzey7qaixy45i1o-medium.jpeg",
+                "https://cdn-prod.styleof.com/inferences/cm1hp4lea14oz14jeoghnex7g/dlgc5xwo0qzey7qaixy45i1o-medium.jpeg",
                 "https://cdn-prod.styleof.com/inferences/cm1ho69ha14np14jesnusqiep/mp3aaktzqz20ujco5i3bi5s1-medium.jpeg",
                 42,
                 "Cinematic still photo of a couple. emotional, harmonious, vignette, 4k epic detailed, shot on kodak, 35mm photo, sharp focus, high budget, cinemascope, moody, epic, gorgeous, film grain, grainy",
             ]
         ],
-        inputs=[base_image, style_image, identity_image, identity_image_2, seed, prompt],
+        inputs=[base_image, style_image, identity_image, identity_image_2,identity_image_3, seed, prompt],
         outputs=[out],
         fn=generate,
         cache_examples="lazy",
     )
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0", server_port=6807,enable_queue=True)

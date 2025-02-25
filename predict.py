@@ -22,6 +22,8 @@ class Predictor(BasePredictor):
         identity_image_strength_1: float = Input(description="First identity image strength for the model", default=1.0, ge=0.0, le=1.0),
         identity_image_2: Path = Input(description="Second identity image for the model", default=None),
         identity_image_strength_2: float = Input(description="Second identity image strength for the model", default=1.0, ge=0.0, le=1.0),
+        identity_image_3: Path = Input(description="Second identity image for the model", default=None),
+        identity_image_strength_3: float = Input(description="third identity image strength for the model", default=1.0, ge=0.0, le=1.0),
         seed: int = Input(description="Random seed for the model. Use -1 for random", default=-1),
         prompt: str = Input(description="Prompt for the model", default="Cinematic still photo of a couple. emotional, harmonious, vignette, 4k epic detailed, shot on kodak, 35mm photo, sharp focus, high budget, cinemascope, moody, epic, gorgeous, film grain, grainy"),
         negative_prompt: str = Input(description="Negative prompt for the model", default="anime, cartoon, graphic, (blur, blurry, bokeh), text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured"),
@@ -39,6 +41,8 @@ class Predictor(BasePredictor):
         style_image = Image.open(style_image) if style_image else None
         identity_image_1 = Image.open(identity_image_1) if identity_image_1 else None
         identity_image_2 = Image.open(identity_image_2) if identity_image_2 else None
+        identity_image_3 = Image.open(identity_image_3) if identity_image_3 else None
+
         depth_image = Image.open(depth_image) if depth_image else None
 
         images = self.omni_zero.generate(
@@ -56,6 +60,8 @@ class Predictor(BasePredictor):
             identity_image_strength_1=identity_image_strength_1,
             identity_image_2=identity_image_2,
             identity_image_strength_2=identity_image_strength_2,
+            identity_image_3=identity_image_3,
+            identity_image_strength_3=identity_image_strength_3,
             depth_image=depth_image,
             depth_image_strength=depth_image_strength,
             mask_guidance_start=mask_guidance_start,

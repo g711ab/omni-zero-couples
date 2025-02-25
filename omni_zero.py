@@ -217,6 +217,8 @@ class OmniZeroCouple():
         identity_image_strength_1=1.0,
         identity_image_2=None,
         identity_image_strength_2=1.0,
+        identity_image_3=None,
+        identity_image_strength_3=1.0,
         depth_image=None,
         depth_image_strength=0.5,
         mask_guidance_start=0.0,
@@ -252,6 +254,11 @@ class OmniZeroCouple():
             identity_image_2 = load_and_resize_image(identity_image_2, resolution, resolution)
         else:
             raise ValueError("You must provide an identity image 2")
+        
+        if identity_image_3 is not None:
+            identity_image_3 = load_and_resize_image(identity_image_3, resolution, resolution)
+        else:
+            raise ValueError("You must provide an identity image 3")
 
         height, width = base_image.size
 
@@ -267,6 +274,12 @@ class OmniZeroCouple():
         face_info_2 = sorted(face_info_2, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])[-1] # only use the maximum face
         face_emb_2 = torch.tensor(face_info_2['embedding']).to("cuda", dtype=self.dtype)
 
+        face_info_3 = self.face_analysis.get(cv2.cvtColor(np.array(identity_image_3), cv2.COLOR_RGB2BGR))
+        for i, face in enumerate(face_info_3):
+            print(f"Face 3 -{i}: Age: {face['age']}, Gender: {face['gender']}")
+        face_info_3 = sorted(face_info_3, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])[-1] # only use the maximum face
+        face_emb_3 = torch.tensor(face_info_3['embedding']).to("cuda", dtype=self.dtype)
+
         zero = np.zeros((width, height, 3), dtype=np.uint8)
         # face_kps_identity_image_1 = self.draw_kps(zero, face_info_1['kps'])
         # face_kps_identity_image_2 = self.draw_kps(zero, face_info_2['kps'])
@@ -275,10 +288,13 @@ class OmniZeroCouple():
         faces_info_img2img = sorted(face_info_img2img, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])
         face_info_a = faces_info_img2img[-1]
         face_info_b = faces_info_img2img[-2]
+        face_info_c = faces_info_img2img[-3]
         # face_emb_a = torch.tensor(face_info_a['embedding']).to("cuda", dtype=self.dtype)
         # face_emb_b = torch.tensor(face_info_b['embedding']).to("cuda", dtype=self.dtype)
         face_kps_identity_image_a = draw_kps(zero, face_info_a['kps'])
         face_kps_identity_image_b = draw_kps(zero, face_info_b['kps'])
+        face_kps_identity_image_c = draw_kps(zero, face_info_c['kps'])
+
 
         general_mask = PIL.Image.fromarray(np.ones((width, height, 3), dtype=np.uint8))
 
@@ -294,13 +310,19 @@ class OmniZeroCouple():
         control_mask_2[y1:y2, x1:x2] = 255
         control_mask_2 = PIL.Image.fromarray(control_mask_2.astype(np.uint8))
 
-        controlnet_masks = [control_mask_1, control_mask_2, general_mask]
-        ip_adapter_images = [face_emb_1, face_emb_2, style_image, ]
+        control_mask_3 = zero.copy()
+        x1, y1, x2, y2 = face_info_c["bbox"]
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        control_mask_3[y1:y2, x1:x2] = 255
+        control_mask_3 = PIL.Image.fromarray(control_mask_3.astype(np.uint8))
 
-        masks = self.ip_adapter_mask_processor.preprocess([control_mask_1, control_mask_2, general_mask], height=height, width=width)
+        controlnet_masks = [control_mask_1, control_mask_2, control_mask_3, general_mask]
+        ip_adapter_images = [face_emb_1, face_emb_2, face_emb_3, style_image, ]
+
+        masks = self.ip_adapter_mask_processor.preprocess([control_mask_1, control_mask_2, control_mask_3, general_mask], height=height, width=width)
         ip_adapter_masks = [mask.unsqueeze(0) for mask in masks]
 
-        inpaint_mask = torch.logical_or(torch.tensor(np.array(control_mask_1)), torch.tensor(np.array(control_mask_2))).float()
+        inpaint_mask = torch.logical_or(torch.tensor(np.array(control_mask_1)), torch.tensor(np.array(control_mask_2)), torch.tensor(np.array(control_mask_3))).float()
         inpaint_mask = PIL.Image.fromarray((inpaint_mask.numpy() * 255).astype(np.uint8)).convert("RGB")
 
         new_ip_adapter_masks = []
@@ -313,7 +335,7 @@ class OmniZeroCouple():
             
         generator = torch.Generator(device="cpu").manual_seed(seed)
 
-        self.pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,
+        self.pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,identity_image_strength_3,
             {
                 "down": { "block_2": [0.0, 0.0] }, #Composition
                 "up": { "block_0": [0.0, style_image_strength, 0.0] } #Style
@@ -332,10 +354,10 @@ class OmniZeroCouple():
             mask_image=inpaint_mask,
             i2i_mask_guidance_start=mask_guidance_start,
             i2i_mask_guidance_end=mask_guidance_end,
-            control_image=[face_kps_identity_image_a, face_kps_identity_image_b, depth_image],
+            control_image=[face_kps_identity_image_a, face_kps_identity_image_b, face_kps_identity_image_c, depth_image],
             control_mask=controlnet_masks,
             identity_control_indices=[(0,0), (1,1)],
-            controlnet_conditioning_scale=[identity_image_strength_1, identity_image_strength_2, depth_image_strength],
+            controlnet_conditioning_scale=[identity_image_strength_1, identity_image_strength_2, identity_image_strength_3, depth_image_strength],
             strength=1-base_image_strength,
             generator=generator,
             seed=seed,
