@@ -203,7 +203,9 @@ def generate(
     masks = ip_adapter_mask_processor.preprocess([control_mask_1, control_mask_2, control_mask_3, general_mask], height=height, width=width)
     ip_adapter_masks = [mask.unsqueeze(0) for mask in masks]
 
-    inpaint_mask = torch.logical_or(torch.tensor(np.array(control_mask_1)), torch.tensor(np.array(control_mask_2)), torch.tensor(np.array(control_mask_3))).float()
+    #inpaint_mask = torch.logical_or(torch.tensor(np.array(control_mask_1)), torch.tensor(np.array(control_mask_2)), torch.tensor(np.array(control_mask_3))).float()
+    # 使用位运算符批量处理
+    inpaint_mask = (torch.tensor(np.array(control_mask_1)).bool() | torch.tensor(np.array(control_mask_2)).bool() |torch.tensor(np.array(control_mask_3)).bool()).float()
     inpaint_mask = PIL.Image.fromarray((inpaint_mask.numpy() * 255).astype(np.uint8)).convert("RGB")
 
     new_ip_adapter_masks = []
@@ -336,8 +338,10 @@ with gr.Blocks() as demo:
     gr.Examples(
         examples=[
             [
-                "https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
-                "https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
+                #"https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
+                "./input/3children.png",
+                #"https://cdn-prod.styleof.com/inferences/cm1ho5cjl14nh14jec6phg2h8/i6k59e7gpsr45ufc7l8kun0g-medium.jpeg",
+                "./input/3children.png",
                 "https://cdn-prod.styleof.com/inferences/cm1hp4lea14oz14jeoghnex7g/dlgc5xwo0qzey7qaixy45i1o-medium.jpeg",
                 "https://cdn-prod.styleof.com/inferences/cm1hp4lea14oz14jeoghnex7g/dlgc5xwo0qzey7qaixy45i1o-medium.jpeg",
                 "https://cdn-prod.styleof.com/inferences/cm1ho69ha14np14jesnusqiep/mp3aaktzqz20ujco5i3bi5s1-medium.jpeg",
