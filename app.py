@@ -73,7 +73,7 @@ ip_adapter_mask_processor = IPAdapterMaskProcessor()
 
 pipeline = OmniZeroPipeline.from_pretrained(
     base_model,
-    controlnet=[identitynet, identitynet, zoedepthnet],
+    controlnet=[identitynet, identitynet, identitynet, zoedepthnet],
     torch_dtype=dtype,
     image_encoder=ip_adapter_plus_image_encoder,
 ).to("cuda")
@@ -218,13 +218,28 @@ def generate(
         
     generator = torch.Generator(device="cpu").manual_seed(seed)
 
+    '''
     pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,identity_image_strength_3,
         {
             "down": { "block_2": [0.0, 0.0] }, #Composition
             "up": { "block_0": [0.0, style_image_strength, 0.0] } #Style
         }
     ])
+    '''
+    # 单独设置全局缩放
+    pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,identity_image_strength_3])
 
+    ''' 
+    # 设置特定层级缩放（保持原有风格控制）
+    pipeline.set_ip_adapter_scale([
+        None,  # 适配器1无特殊层级控制
+        None,  # 适配器2无特殊层级控制
+        {
+            "down": {"block_2": [0.0, 0.0]},
+            "up": {"block_0": [0.0, style_image_strength, 0.0]}
+        }
+    ])
+    '''
     images = pipeline(
         prompt=prompt,
         negative_prompt=negative_prompt, 
