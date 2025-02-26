@@ -221,8 +221,8 @@ def generate(
     
     pipeline.set_ip_adapter_scale([identity_image_strength_1, identity_image_strength_2,identity_image_strength_3,
         {
-            "down": { "block_2": [0.0, 0.0] }, #Composition
-            "up": { "block_0": [0.0, style_image_strength, 0.0] } #Style
+            "down": { "block_2": [0.0, 0.0, 0.0] }, #Composition
+            "up": { "block_0": [0.0, style_image_strength, 0.0, 0.0] } #Style
         }
     ])
     ''' 
