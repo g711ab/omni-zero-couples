@@ -191,7 +191,7 @@ class OmniZeroCouple():
 
         self.pipeline = OmniZeroPipeline.from_pretrained(
             base_model,
-            controlnet=[identitynet, identitynet, zoedepthnet],
+            controlnet=[identitynet, identitynet, identitynet, zoedepthnet],
             torch_dtype=dtype,
             image_encoder=ip_adapter_plus_image_encoder,
         ).to(device)
@@ -200,7 +200,7 @@ class OmniZeroCouple():
         config["timestep_spacing"] = "trailing"
         self.pipeline.scheduler = DPMSolverMultistepScheduler.from_config(config, use_karras_sigmas=True, algorithm_type="sde-dpmsolver++", final_sigmas_type="zero")
 
-        self.pipeline.load_ip_adapter(["okaris/ip-adapter-instantid", "okaris/ip-adapter-instantid", "h94/IP-Adapter"], subfolder=[None, None, "sdxl_models"], weight_name=["ip-adapter-instantid.bin", "ip-adapter-instantid.bin", "ip-adapter-plus_sdxl_vit-h.safetensors"])
+        self.pipeline.load_ip_adapter(["okaris/ip-adapter-instantid", "okaris/ip-adapter-instantid", "okaris/ip-adapter-instantid", "h94/IP-Adapter"], subfolder=[None, None, "sdxl_models"], weight_name=["ip-adapter-instantid.bin", "ip-adapter-instantid.bin", "ip-adapter-instantid.bin", "ip-adapter-plus_sdxl_vit-h.safetensors"])
    
     def generate(self,
         seed=42,
